@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Verification DApp</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Intro.js CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/intro.js/minified/introjs.min.css">
+    <script src="https://unpkg.com/intro.js/minified/intro.min.js"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+
+    <!-- Info Icon / Modal -->
+    <div class="fixed top-4 right-4 z-50">
+        <button id="infoBtn" class="text-2xl bg-yellow-300 p-2 rounded-full shadow hover:bg-yellow-400">ℹ️</button>
+    </div>
+
+    <div id="infoModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-40">
+        <div class="bg-white rounded-xl shadow-lg max-w-2xl w-11/12 p-6 relative">
+            <button id="closeModal" class="absolute top-2 right-2 text-xl font-bold">&times;</button>
+            <h2 class="text-xl font-bold mb-4">Getting Started ℹ️</h2>
+            <ol class="list-decimal list-inside space-y-2 text-gray-700">
+                <li>
+                    <b>Install MetaMask:</b> You need a crypto wallet to interact with this DApp. 
+                    <a href="https://metamask.io/download/" target="_blank" class="text-purple-600 hover:underline">Download MetaMask</a>.
+                </li>
+                <li>
+                    <b>Create or Access Wallet:</b> Open MetaMask and either create a new wallet or log in to your existing wallet. Keep your seed phrase safe.
+                </li>
+                <li>
+                    <b>Connect to the Network:</b> For local development, connect MetaMask to <b>Hardhat Local Network</b> (127.0.0.1:8545). For live deployment, connect to the appropriate network.
+                </li>
+                <li>
+                    <b>Understand the Portals:</b>
+                    <ul class="list-disc list-inside ml-4 mt-1">
+                        <li>🎓 <b>University Portal:</b> Register your university, add students, approve skill tests, post results.</li>
+                        <li>👨‍🎓 <b>Student Portal:</b> Register using verified university details, upload your resume CID, request skill tests, view results & notifications.</li>
+                        <li>🏢 <b>Employer Portal:</b> Register your company, search for students by skills, view resumes, send job notifications.</li>
+                    </ul>
+                </li>
+                <li>
+                    <b>Usage Tips:</b> Ensure MetaMask is connected and the correct account is selected before performing any action. All actions are permanent on the blockchain.
+                </li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-blue-600 text-white py-6 shadow-md">
+        <div class="container mx-auto text-center">
+            <h1 class="text-3xl font-bold">🚀 Skill Verification DApp</h1>
+            <p class="mt-2 text-lg">Connect Universities, Students & Companies on Blockchain</p>
+            <button onclick="startTutorial()" class="mt-4 bg-yellow-500 px-4 py-2 rounded-lg text-white hover:bg-yellow-600 transition">
+                📝 Start Tutorial
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Portal Section -->
+    <main class="container mx-auto mt-12 px-4 max-w-6xl">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+            <!-- University Portal -->
+            <div class="university-portal bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition duration-300" data-intro="This is the University Portal. Manage students, approve skill tests, and post marks.">
+                <div class="text-center mb-4 text-5xl">🎓</div>
+                <h2 class="text-xl font-bold text-center mb-2">University Portal</h2>
+                <p class="text-gray-600 text-center mb-4">
+                    Manage student records, approve skill tests, and post marks securely on blockchain.
+                </p>
+                <div class="text-center">
+                    <a href="university.html" class="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Go to Portal</a>
+                </div>
+            </div>
+
+            <!-- Student Portal -->
+            <div class="student-portal bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition duration-300" data-intro="This is the Student Portal. Register yourself, upload resume CID, request skill tests, and view results & notifications.">
+                <div class="text-center mb-4 text-5xl">👨‍🎓</div>
+                <h2 class="text-xl font-bold text-center mb-2">Student Portal</h2>
+                <p class="text-gray-600 text-center mb-4">
+                    Register yourself, request skill tests, upload your resume, and track your verified scores & notifications.
+                </p>
+                <div class="text-center">
+                    <a href="applicant.html" class="inline-block bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition">Go to Portal</a>
+                </div>
+            </div>
+
+            <!-- Employer Portal -->
+            <div class="employee-portal bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition duration-300" data-intro="This is the Employer Portal. Register your company, search verified students, view resumes, and send job notifications.">
+                <div class="text-center mb-4 text-5xl">🏢💼</div>
+                <h2 class="text-xl font-bold text-center mb-2">Employer Portal</h2>
+                <p class="text-gray-600 text-center mb-4">
+                    Register your company, search for verified students by skills, and send job notifications securely.
+                </p>
+                <div class="text-center">
+                    <a href="employer.html" class="inline-block bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition">Go to Portal</a>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-100 text-gray-700 mt-16 py-6 shadow-inner">
+        <div class="container mx-auto text-center">
+            <p>© 2025 Skill Verification DApp | Powered by Blockchain & Tailwind CSS</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        // Info modal
+        const infoBtn = document.getElementById('infoBtn');
+        const infoModal = document.getElementById('infoModal');
+        const closeModal = document.getElementById('closeModal');
+
+        infoBtn.addEventListener('click', () => {
+            infoModal.classList.remove('hidden');
+            infoModal.classList.add('flex');
+        });
+
+        closeModal.addEventListener('click', () => {
+            infoModal.classList.add('hidden');
+            infoModal.classList.remove('flex');
+        });
+
+        infoModal.addEventListener('click', (e) => {
+            if (e.target === infoModal) {
+                infoModal.classList.add('hidden');
+                infoModal.classList.remove('flex');
+            }
+        });
+
+        // Intro.js Tutorial
+        function startTutorial() {
+            introJs().setOptions({
+                steps: [
+                    { intro: "Welcome to the Skill Verification DApp! Let's take a quick tour." },
+                    { element: document.querySelector('.university-portal'), intro: "University Portal: Add students, approve skill tests, post marks." },
+                    { element: document.querySelector('.student-portal'), intro: "Student Portal: Register, upload resume CID, request skill tests, view results & notifications." },
+                    { element: document.querySelector('.employee-portal'), intro: "Employer Portal: Register company, search verified students, view resumes, send job notifications." }
+                ],
+                showProgress: true,
+                exitOnOverlayClick: false
+            }).start();
+        }
+    </script>
+</body>
+</html>

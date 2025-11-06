@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>University Portal - Skill Verification DApp</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-r from-blue-50 via-blue-100 to-white min-h-screen font-sans">
+
+<header class="bg-blue-600 text-white py-6 shadow-md">
+  <div class="container mx-auto text-center">
+    <h1 class="text-3xl font-bold">University Registration & Student Portal</h1>
+    <a href="index.html" class="inline-block mt-2 bg-gray-500 px-4 py-2 rounded hover:bg-gray-600">⬅️ Back to Home</a>
+  </div>
+</header>
+
+<main class="container mx-auto mt-10 px-4 max-w-5xl">
+  <!-- University Registration -->
+  <section class="bg-white shadow-lg rounded-xl p-6 mb-10">
+    <h2 class="text-2xl font-semibold text-blue-700 mb-4">Register Your University</h2>
+    <form id="universityForm" class="space-y-4">
+      <input type="text" id="uniName" placeholder="University Name" class="w-full p-3 border rounded-lg" required>
+      <input type="url" id="uniWebsite" placeholder="Website URL" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="uniAddress" placeholder="Physical Address" class="w-full p-3 border rounded-lg" required>
+      <input type="email" id="uniEmail" placeholder="Official Email" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="uniRegNo" placeholder="Government Registration Number" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="uniAccreditation" placeholder="Accreditation ID" class="w-full p-3 border rounded-lg">
+      <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">Register University</button>
+    </form>
+    <p id="registrationStatus" class="mt-4 text-green-600 font-medium"></p>
+  </section>
+
+  <!-- Student Addition -->
+  <section id="studentSection" class="hidden bg-white shadow-lg rounded-xl p-6">
+    <h2 class="text-2xl font-semibold text-blue-700 mb-4">Add Student</h2>
+    <form id="studentForm" class="space-y-4">
+      <input type="text" id="studentName" placeholder="Full Name" class="w-full p-3 border rounded-lg" required>
+      <input type="email" id="studentEmail" placeholder="Email ID" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentDegree" placeholder="Degree" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentRegNo" placeholder="Registration Number" class="w-full p-3 border rounded-lg" required>
+      <input type="number" id="yearCompletion" placeholder="Year of Completion" class="w-full p-3 border rounded-lg" required>
+      <input type="file" id="studentPhoto" accept="image/*" class="w-full p-3 border rounded-lg" required>
+      <input type="file" id="studentResume" accept=".pdf,.doc,.docx" class="w-full p-3 border rounded-lg" required>
+      <button type="submit" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition">Add Student</button>
+    </form>
+    <p id="studentStatus" class="mt-4 text-green-600 font-medium"></p>
+
+    <h3 class="text-xl font-semibold text-blue-700 mt-6 mb-3">Students Added</h3>
+    <div id="studentList" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-700"></div>
+  </section>
+</main>
+
+<footer class="text-center mt-20 py-6 text-gray-600">
+  &copy; 2025 University DApp Portal
+</footer>
+
+<script>
+let provider, signer;
+let universityContract, universityRegistryContract, resumeRegistryContract;
+let allStudents = [];
+
+// ===== CONTRACT ADDRESSES & ABIs =====
+
+const universityRegistryAddress = " 0xe38b6847E611e942E6c80eD89aE867F522402e80"; 
+const universityRegistryABI = [{
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getStudents",
+      "outputs": [
+        {
+          "internalType": "string[]",
+          "name": "names",
+          "type": "string[]"
+        },
+        {
+          "internalType": "string[]",
+          "name": "emails",
+          "type": "string[]"
+        },
+        {
+          "internalType": "string[]",
+          "name": "degrees",
+          "type": "string[]"
+        },
+        {
+          "internalType": "string[]",
+          "name": "regNos",
+          "type": "string[]"
+        },
+        {
+          "internalType": "uint16[]",
+          "name": "yearsCompletion",
+          "type": "uint16[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uni",
+          "type": "address"
+        }
+      ],
+      "name": "isUniversityVerified",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }];
+
+const resumeRegistryAddress = "0x2c8ED11fd7A058096F2e5828799c68BE88744E2F"; 
+const resumeRegistryABI = [{
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_universityRegistry",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_employerContact",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_testDateTime",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_durationMinutes",
+          "type": "uint256"
+        }
+      ],
+      "name": "assignTest",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "name": "employers",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "isRegistered",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudent",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "university",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "skill",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "resumeCID",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "photoCID",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isVerified",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "studentWallet",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.Student",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentJobNotifications",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "companyName",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "jobTitle",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "interviewDate",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "interviewLocation",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerEmail",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerContact",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.JobNotification[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTestAnswers",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTestSubmissions",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "testIndex",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "answers",
+              "type": "uint256[]"
+            },
+            {
+              "internalType": "bool",
+              "name": "submitted",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.StudentTestSubmission[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTests",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "studentId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "companyName",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerEmail",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerContact",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "jobTitle",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "testDateTime",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "durationMinutes",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "submitted",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "score",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.TestNotification[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "_wallet",
+          "type": "address"
+        }
+      ],
+      "name": "registerEmployer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_university",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_skill",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_resumeCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_photoCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        }
+      ],
+      "name": "registerStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_skill",
+          "type": "string"
+        }
+      ],
+      "name": "searchStudentsBySkill",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "university",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "skill",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "resumeCID",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "photoCID",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isVerified",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "studentWallet",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.Student[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_salary",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewLocation",
+          "type": "string"
+        }
+      ],
+      "name": "sendJobOffer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "studentCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentJobNotifications",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "interviewLocation",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerContact",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentTestSubmissions",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "submitted",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentTests",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerContact",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "testDateTime",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "durationMinutes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "submitted",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "score",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "students",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "university",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "skill",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "resumeCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "photoCID",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isVerified",
+          "type": "bool"
+        },
+        {
+          "internalType": "address",
+          "name": "studentWallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "_answers",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "submitTestByStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_score",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewLocation",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_threshold",
+          "type": "uint256"
+        }
+      ],
+      "name": "submitTestResult",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "universityRegistry",
+      "outputs": [
+        {
+          "internalType": "contract IUniversityRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "verifyStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_uniAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        }
+      ],
+      "name": "verifyStudentWithUniversity",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }];
+
+// ===== SHA-256 Utility Function =====
+async function computeSHA256Hex(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ===== INIT =====
+async function init() {
+  if (!window.ethereum) return alert("Please install MetaMask");
+  provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+
+  universityContract = new ethers.Contract(universityAddress, universityABI, signer);
+  universityRegistryContract = new ethers.Contract(universityRegistryAddress, universityRegistryABI, signer);
+  resumeRegistryContract = new ethers.Contract(resumeRegistryAddress, resumeRegistryABI, signer);
+}
+
+// ===== IPFS Upload via Lighthouse =====
+async function uploadToLighthouse(file) {
+  const apiKey = "265b44d3.4545619d6942437aba07485069df6f63";
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("https://node.lighthouse.storage/api/v0/add", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}` },
+    body: formData
+  });
+  const data = await res.json();
+  return data.Hash;
+}
+
+// ===== REGISTER UNIVERSITY =====
+document.getElementById("universityForm").onsubmit = async e => {
+  e.preventDefault();
+  const name = document.getElementById("uniName").value;
+  const website = document.getElementById("uniWebsite").value;
+  const address = document.getElementById("uniAddress").value;
+  const email = document.getElementById("uniEmail").value;
+  const regNo = document.getElementById("uniRegNo").value;
+  const accreditation = document.getElementById("uniAccreditation").value;
+
+  try {
+    const tx = await universityContract.registerUniversity(name, website, address, email, regNo, accreditation);
+    await tx.wait();
+    document.getElementById("registrationStatus").textContent = "University registered & approved ✅";
+    document.getElementById("studentSection").classList.remove("hidden");
+  } catch(err) {
+    console.error(err); alert("Registration failed");
+  }
+};
+
+// ===== ADD STUDENT =====
+document.getElementById("studentForm").onsubmit = async e => {
+  e.preventDefault();
+
+  const photoFile = document.getElementById("studentPhoto").files[0];
+  const resumeFile = document.getElementById("studentResume").files[0];
+  if(!photoFile || !resumeFile) return alert("Upload photo and resume");
+
+  const photoCID = await uploadToLighthouse(photoFile);
+  const resumeCID = await uploadToLighthouse(resumeFile);
+
+  const name = document.getElementById("studentName").value;
+  const email = document.getElementById("studentEmail").value;
+  const degree = document.getElementById("studentDegree").value;
+  const regNo = document.getElementById("studentRegNo").value;
+  const completion = parseInt(document.getElementById("yearCompletion").value);
+
+  try {
+    // ----- Cross-verify with UniversityRegistry -----
+    const studentsFromRegistry = await universityRegistryContract.getStudents(await signer.getAddress());
+    const { names, emails, degrees, regNos, yearsCompletion } = studentsFromRegistry;
+    let verified = false;
+    for(let i=0;i<names.length;i++){
+      if(names[i]===name && emails[i]===email && degrees[i]===degree && regNos[i]===regNo && yearsCompletion[i]===completion){
+        verified = true; break;
+      }
+    }
+    if(!verified) return alert("Student details do not match UniversityRegistry records");
+
+    // ----- Compute SHA-256 Hash of verified attributes + photoCID + resumeCID -----
+    const combinedString = `${name}|${email}|${degree}|${regNo}|${completion}|${photoCID}|${resumeCID}`;
+    const hashHex = await computeSHA256Hex(combinedString);
+
+    // ----- Send to ResumeRegistry -----
+    const tx = await resumeRegistryContract.registerStudent(
+      name,
+      "Your University Name",
+      email,
+      "", // skill
+      resumeCID,
+      photoCID,
+      degree,
+      regNo,
+      completion,
+      hashHex
+    );
+    await tx.wait();
+
+    allStudents.push({name,email,degree,regNo,completion,photo:photoCID,resume:resumeCID,hash:hashHex});
+    document.getElementById("studentStatus").textContent = "Student added ✅";
+    document.getElementById("studentForm").reset();
+    renderStudents(allStudents);
+
+  } catch(err) { console.error(err); alert("Failed to add student"); }
+};
+
+// ===== RENDER STUDENTS =====
+function renderStudents(students) {
+  const list = document.getElementById("studentList");
+  list.innerHTML = "";
+  students.forEach(s => {
+    const div = document.createElement("div");
+    div.className = "bg-blue-50 p-4 rounded-lg flex items-center gap-4";
+    div.innerHTML = `
+      <img src="https://ipfs.io/ipfs/${s.photo}" class="w-20 h-20 rounded-full border object-cover">
+      <div>
+        <strong>${s.name}</strong><br>
+        Degree: ${s.degree}<br>
+        RegNo: ${s.regNo}<br>
+        Year: ${s.completion}<br>
+        Photo CID: <span class="text-xs break-all">${s.photo}</span><br>
+        Resume CID: <span class="text-xs break-all">${s.resume}</span><br>
+        SHA-256 Hash: <span class="text-xs break-all">${s.hash}</span>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+window.onload = init;
+</script>
+</body>
+</html>

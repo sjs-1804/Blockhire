@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Applicant Portal - Live Test (MCQ Auto-score + Descriptive upload)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+<div class="min-h-screen p-6 flex flex-col items-center">
+  <div class="w-full max-w-4xl">
+    <header class="bg-white rounded-lg shadow p-6 mb-6 flex justify-between items-center">
+      <h1 class="text-2xl font-bold">Applicant Portal — Live Test</h1>
+      <div>
+        <button id="connectWalletBtn" class="bg-green-600 text-white px-4 py-2 rounded mr-2">Connect Wallet</button>
+        <button id="disconnectBtn" class="bg-red-500 text-white px-4 py-2 rounded hidden">Disconnect</button>
+        <div id="walletAddress" class="mt-2 text-sm break-all"></div>
+      </div>
+    </header>
+
+    <!-- Student verification & resume upload (kept from prior portal) -->
+    <section class="grid grid-cols-1 gap-6 mb-6">
+      <div class="bg-white p-4 rounded shadow">
+        <h2 class="font-semibold mb-3">1️⃣ Student Verification</h2>
+        <form id="verifyForm" class="space-y-2">
+          <input id="studentName" class="w-full border p-2 rounded" placeholder="Full name" required />
+          <input id="studentEmail" class="w-full border p-2 rounded" placeholder="Email" required />
+          <input id="studentDegree" class="w-full border p-2 rounded" placeholder="Degree" required />
+          <div class="flex gap-2">
+            <input id="studentRegNo" class="flex-1 border p-2 rounded" placeholder="Registration number" required />
+            <input id="studentYear" type="number" class="w-28 border p-2 rounded" placeholder="Year" required />
+          </div>
+          <button class="bg-blue-600 text-white px-4 py-2 rounded" type="submit">Verify & Register</button>
+        </form>
+        <p id="verificationStatus" class="mt-2 font-semibold"></p>
+      </div>
+
+      <div class="bg-white p-4 rounded shadow">
+        <h2 class="font-semibold mb-3">2️⃣ Resume Upload</h2>
+        <input id="resumeFile" type="file" accept=".pdf,.doc,.docx,.txt" class="mb-2" />
+        <div class="flex gap-2">
+          <button id="uploadResumeBtn" class="bg-purple-600 text-white px-4 py-2 rounded">Upload & Store on IPFS</button>
+          <button id="viewResumeBtn" class="bg-gray-200 px-4 py-2 rounded">View Last CID</button>
+        </div>
+        <p id="resumeStatus" class="mt-2 font-semibold"></p>
+        <p id="lastResumeCID" class="mt-1 text-sm text-gray-600 break-all"></p>
+      </div>
+    </section>
+
+    <!-- Notifications & tests -->
+    <section class="bg-white p-4 rounded shadow mb-6">
+      <h2 class="font-semibold mb-3">3️⃣ Notifications & Tests</h2>
+      <div id="notifications" class="space-y-3"></div>
+    </section>
+
+    <section class="bg-white p-4 rounded shadow">
+      <h2 class="font-semibold mb-3">4️⃣ Result Notifications</h2>
+      <div id="resultNotifications" class="space-y-2"></div>
+    </section>
+  </div>
+</div>
+
+<!-- Test Modal -->
+<div id="testModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white rounded-xl w-[90%] max-w-3xl p-6 relative">
+    <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-600">✖</button>
+    <h2 id="modalTitle" class="text-2xl font-bold mb-2"></h2>
+    <div id="modalMeta" class="text-sm text-gray-600 mb-4"></div>
+    <div id="timer" class="text-red-600 font-semibold mb-4 text-right"></div>
+
+    <form id="testForm" class="space-y-4 max-h-[60vh] overflow-auto"></form>
+
+    <div class="flex gap-2 mt-4">
+      <button id="submitTestBtn" class="bg-green-600 text-white px-4 py-2 rounded">Submit Test</button>
+      <button onclick="saveAndClose(event)" class="bg-gray-200 px-4 py-2 rounded">Save & Exit (pause not allowed)</button>
+    </div>
+
+    <p id="modalStatus" class="mt-3 font-semibold"></p>
+  </div>
+</div>
+<script>
+// Compute SHA-256 hash of a string and return as hex
+async function computeSHA256Hex(inputStr) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(inputStr);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2,'0'))
+        .join('');
+}
+
+const resumeRegistryAddress = "0x2c8ED11fd7A058096F2e5828799c68BE88744E2F";
+const resumeRegistryABI = [ {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_universityRegistry",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_employerContact",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_testDateTime",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_durationMinutes",
+          "type": "uint256"
+        }
+      ],
+      "name": "assignTest",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "name": "employers",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "isRegistered",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudent",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "university",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "skill",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "resumeCID",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "photoCID",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isVerified",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "studentWallet",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.Student",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentJobNotifications",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "companyName",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "jobTitle",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "interviewDate",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "interviewLocation",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerEmail",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerContact",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.JobNotification[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTestAnswers",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTestSubmissions",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "testIndex",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "answers",
+              "type": "uint256[]"
+            },
+            {
+              "internalType": "bool",
+              "name": "submitted",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.StudentTestSubmission[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentTests",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "studentId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "companyName",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerEmail",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "employerContact",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "jobTitle",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "testDateTime",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "durationMinutes",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "submitted",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "score",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.TestNotification[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "_wallet",
+          "type": "address"
+        }
+      ],
+      "name": "registerEmployer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_university",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_skill",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_resumeCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_photoCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        }
+      ],
+      "name": "registerStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_skill",
+          "type": "string"
+        }
+      ],
+      "name": "searchStudentsBySkill",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "university",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "skill",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "resumeCID",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "photoCID",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isVerified",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "studentWallet",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct ResumeRegistry.Student[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_salary",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewLocation",
+          "type": "string"
+        }
+      ],
+      "name": "sendJobOffer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "studentCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentJobNotifications",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "interviewLocation",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerContact",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentTestSubmissions",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "submitted",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "studentTests",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerEmail",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "employerContact",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "testDateTime",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "durationMinutes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "submitted",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "score",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "students",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "university",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "skill",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "resumeCID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "photoCID",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isVerified",
+          "type": "bool"
+        },
+        {
+          "internalType": "address",
+          "name": "studentWallet",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "_answers",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "submitTestByStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_score",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewDate",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_interviewLocation",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_threshold",
+          "type": "uint256"
+        }
+      ],
+      "name": "submitTestResult",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "universityRegistry",
+      "outputs": [
+        {
+          "internalType": "contract IUniversityRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "verifyStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_uniAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        }
+      ],
+      "name": "verifyStudentWithUniversity",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    } ];
+
+const universityRegistryAddress = "0xe38b6847E611e942E6c80eD89aE867F522402e80"; // optional
+const universityRegistryABI = [ {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "ECDSAInvalidSignature",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "length",
+          "type": "uint256"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureLength",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "s",
+          "type": "bytes32"
+        }
+      ],
+      "name": "ECDSAInvalidSignatureS",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "studentName",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "regNo",
+          "type": "string"
+        }
+      ],
+      "name": "StudentAdded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        }
+      ],
+      "name": "UniversityApproved",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "uniId",
+          "type": "uint256"
+        }
+      ],
+      "name": "UniversityRegistered",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_contact",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_studentAddress",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearJoining",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        },
+        {
+          "internalType": "string",
+          "name": "_photoCID",
+          "type": "string"
+        }
+      ],
+      "name": "addStudent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        }
+      ],
+      "name": "addUniversity",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getAllUniversities",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "website",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "physicalAddress",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "regNo",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "accreditation",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isApproved",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct UniversityRegistry.University[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getStudents",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "degree",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "regNo",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "contact",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "studentAddress",
+              "type": "string"
+            },
+            {
+              "internalType": "uint16",
+              "name": "yearJoining",
+              "type": "uint16"
+            },
+            {
+              "internalType": "uint16",
+              "name": "yearCompletion",
+              "type": "uint16"
+            },
+            {
+              "internalType": "string",
+              "name": "photoCID",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct UniversityRegistry.Student[]",
+          "name": "",
+          "type": "tuple[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uniAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getUniversity",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "website",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "physicalAddress",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "email",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "regNo",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "accreditation",
+              "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isApproved",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct UniversityRegistry.University",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "uni",
+          "type": "address"
+        }
+      ],
+      "name": "isUniversityVerified",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_website",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_physicalAddress",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_accreditation",
+          "type": "string"
+        }
+      ],
+      "name": "registerUniversity",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "universities",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "website",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "physicalAddress",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "accreditation",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isApproved",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "universityIds",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_regNo",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_degree",
+          "type": "string"
+        },
+        {
+          "internalType": "uint16",
+          "name": "_yearCompletion",
+          "type": "uint16"
+        },
+        {
+          "internalType": "bytes",
+          "name": "signature",
+          "type": "bytes"
+        },
+        {
+          "internalType": "address",
+          "name": "university",
+          "type": "address"
+        }
+      ],
+      "name": "verifyStudentSignature",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    } ];
+
+const LIGHTHOUSE_API_KEY = "265b44d3.4545619d6942437aba07485069df6f63"; // for IPFS uploads
+
+// ====== PAGE STATE ======
+let web3;
+let accounts = [];
+let account;
+let resumeRegistry;
+let universityRegistry;
+let connected = false;
+
+let currentTest = null;
+let timerInterval = null;
+let remainingSeconds = 0;
+let lastResumeCID = "";
+
+// ====== UI refs ======
+const connectBtn = document.getElementById('connectWalletBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const walletAddressEl = document.getElementById('walletAddress');
+
+const verifyForm = document.getElementById('verifyForm');
+const verificationStatus = document.getElementById('verificationStatus');
+
+const uploadResumeBtn = document.getElementById('uploadResumeBtn');
+const viewResumeBtn = document.getElementById('viewResumeBtn');
+const resumeStatus = document.getElementById('resumeStatus');
+const lastResumeCIDEl = document.getElementById('lastResumeCID');
+
+const notificationsEl = document.getElementById('notifications');
+const resultNotificationsEl = document.getElementById('resultNotifications');
+
+const testModal = document.getElementById('testModal');
+const modalTitle = document.getElementById('modalTitle');
+const modalMeta = document.getElementById('modalMeta');
+const timerEl = document.getElementById('timer');
+const testForm = document.getElementById('testForm');
+const submitTestBtn = document.getElementById('submitTestBtn');
+const modalStatus = document.getElementById('modalStatus');
+
+
+const mockTests = [
+  {
+    testId: 101,
+    title: "JavaScript Fundamentals",
+    description: "Short MCQs and one descriptive answer.",
+    startTimeISO: (new Date(Date.now() - 1000 * 60)).toISOString(), // already started 1 minute ago
+    durationSeconds: 5 * 60, // 5 minutes
+    questions: [
+      { qid: "q1", type: "mcq", q: "typeof null returns:", options: ["object","null","undefined","number"], correctIndex: 0 },
+      { qid: "q2", type: "mcq", q: "Which method parses JSON string?", options: ["JSON.stringify","JSON.parse","toString","String"], correctIndex: 1 },
+      { qid: "q3", type: "desc", q: "Explain closures in JS in 2-3 lines." }
+    ]
+  }
+];
+
+// ======= Web3 and wallet handling =======
+async function connectWallet() {
+  try {
+    if (!window.ethereum) throw new Error("MetaMask not found");
+    web3 = new Web3(window.ethereum);
+    accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) throw new Error("No accounts found");
+    account = accounts[0];
+    walletAddressEl.innerText = account;
+    connectBtn.classList.add('hidden');
+    disconnectBtn.classList.remove('hidden');
+    connected = true;
+
+    // instantiate contracts defensively
+    try { resumeRegistry = new web3.eth.Contract(resumeRegistryABI, resumeRegistryAddress); }
+    catch (e) { console.warn("resumeRegistry instantiation failed:", e); resumeRegistry = null; }
+
+    try { universityRegistry = new web3.eth.Contract(universityRegistryABI, universityRegistryAddress); }
+    catch (e) { universityRegistry = null; }
+
+    // load notifications now that we have account
+    loadNotifications();
+  } catch (err) {
+    alert("Wallet connect failed: " + (err.message || err));
+    console.error(err);
+  }
+}
+
+function disconnectWallet() {
+  accounts = [];
+  account = null;
+  walletAddressEl.innerText = '';
+  connected = false;
+  connectBtn.classList.remove('hidden');
+  disconnectBtn.classList.add('hidden');
+  notificationsEl.innerHTML = '<div class="text-sm text-gray-600">Connect to see notifications</div>';
+}
+
+// track account changes
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', (accs) => {
+    if (!accs || accs.length === 0) disconnectWallet();
+    else { accounts = accs; account = accs[0]; walletAddressEl.innerText = account; loadNotifications(); }
+  });
+}
+
+connectBtn.onclick = connectWallet;
+disconnectBtn.onclick = disconnectWallet;
+
+// ======= Student verify handler (call contract verify) =======
+verifyForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!connected || !resumeRegistry) {
+    verificationStatus.innerText = "Connect wallet and ensure contract ABI/address configured.";
+    verificationStatus.className = "mt-2 font-semibold text-red-600";
+    return;
+  }
+
+  const name = document.getElementById('studentName').value.trim();
+  const email = document.getElementById('studentEmail').value.trim();
+  const degree = document.getElementById('studentDegree').value.trim();
+  const regNo = document.getElementById('studentRegNo').value.trim();
+  const year = parseInt(document.getElementById('studentYear').value);
+
+  try {
+    const isVerified = await resumeRegistry.methods.verifyStudentWithUniversity(
+      account, name, email, degree, regNo, year
+    ).call({ from: account });
+
+    if (isVerified) {
+      verificationStatus.innerText = "✅ Verified! You may upload resume & take tests.";
+      verificationStatus.className = "mt-2 font-semibold text-green-600";
+    } else {
+      verificationStatus.innerText = "❌ Verification failed. Check university records.";
+      verificationStatus.className = "mt-2 font-semibold text-red-600";
+    }
+  } catch (err) {
+    console.error("verifyStudent error:", err);
+    verificationStatus.innerText = "Error verifying (see console).";
+    verificationStatus.className = "mt-2 font-semibold text-red-600";
+  }
+});
+
+// ======= Resume upload (IPFS) =======
+uploadResumeBtn.onclick = async function() {
+  if (!connected || !resumeRegistry) {
+    alert("Connect wallet and ensure contracts are instantiated.");
+    return;
+  }
+  const file = document.getElementById('resumeFile').files[0];
+  if (!file) { alert("Select a resume file."); return; }
+
+  resumeStatus.innerText = "Uploading to IPFS...";
+  try {
+    // Upload file to IPFS
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("https://api.lighthouse.storage/upload", {
+      method: "POST",
+      headers: { "Authorization": LIGHTHOUSE_API_KEY },
+      body: form
+    });
+    const data = await res.json();
+    if (!data || !data.Hash) throw new Error("IPFS upload failed");
+    lastResumeCID = data.Hash;
+    lastResumeCIDEl.innerText = "CID: " + lastResumeCID;
+
+    // ===== Compute hash of verified attributes + CID =====
+    const name = document.getElementById('studentName').value.trim();
+    const email = document.getElementById('studentEmail').value.trim();
+    const degree = document.getElementById('studentDegree').value.trim();
+    const regNo = document.getElementById('studentRegNo').value.trim();
+    const year = parseInt(document.getElementById('studentYear').value);
+
+    const attributesString = `${name}|${email}|${degree}|${regNo}|${year}`;
+    const combinedHash = await computeSHA256Hex(attributesString + lastResumeCID);
+    console.log("Combined SHA-256 Hash:", combinedHash);
+
+    // Send to contract (replace or add a parameter for hash in your registerStudent method)
+    await resumeRegistry.methods.registerStudent(
+      name,
+      "Your University Name",
+      email,
+      "", // skills
+      lastResumeCID,
+      "", // photoCID
+      degree,
+      regNo,
+      year,
+      combinedHash // add this in contract method if designed
+    ).send({ from: account });
+
+    resumeStatus.innerText = "✅ Resume uploaded & registered on-chain with hash.";
+    resumeStatus.className = "mt-2 font-semibold text-green-600";
+    loadNotifications();
+  } catch (err) {
+    console.error("resume upload error:", err);
+    resumeStatus.innerText = "Upload/Register failed (see console).";
+    resumeStatus.className = "mt-2 font-semibold text-red-600";
+  }
+};
+
+
+viewResumeBtn.onclick = function() {
+  if (!lastResumeCID) { alert("No CID yet."); return; }
+  window.open(`https://ipfs.io/ipfs/${lastResumeCID}`, '_blank');
+};
+
+// ======= Notifications & "Take Test" buttons =======
+// This will read scheduled tests from the contract in production.
+// For now we use mockTests and display a "Take Test" button that unlocks at scheduled time.
+async function loadNotifications() {
+  notificationsEl.innerHTML = '';
+
+  // In production: fetch tests for this student via contract call, e.g. resumeRegistry.methods.getStudentTestsByAddress(account).call()
+  // Here we use mock data:
+  for (const t of mockTests) {
+    const startTime = new Date(t.startTimeISO);
+    const now = new Date();
+    const canTake = now >= startTime;
+    const container = document.createElement('div');
+    container.className = "p-3 rounded border flex justify-between items-center";
+
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="font-semibold">${t.title}</div><div class="text-sm text-gray-600">Scheduled: ${startTime.toLocaleString()}</div>`;
+
+    const right = document.createElement('div');
+    const btn = document.createElement('button');
+    btn.className = `px-3 py-2 rounded ${canTake ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-600'}`;
+    btn.disabled = !canTake;
+    btn.innerText = canTake ? 'Take Test' : 'Locked';
+    btn.onclick = () => openTestModal(t);
+    right.appendChild(btn);
+
+    container.appendChild(left);
+    container.appendChild(right);
+    notificationsEl.appendChild(container);
+  }
+}
+
+// ======= Test modal: build UI, start timer =======
+function openTestModal(testObj) {
+  currentTest = testObj;
+  modalTitle.innerText = testObj.title;
+  modalMeta.innerText = testObj.description || '';
+  testForm.innerHTML = '';
+  modalStatus.innerText = '';
+
+  // Build questions
+  testObj.questions.forEach((q, idx) => {
+    const qWrap = document.createElement('div');
+    qWrap.className = 'p-3 border rounded';
+
+    const qTitle = document.createElement('div');
+    qTitle.className = 'font-semibold mb-2';
+    qTitle.innerText = `${idx+1}. ${q.q}`;
+    qWrap.appendChild(qTitle);
+
+    if (q.type === 'mcq') {
+      q.options.forEach((opt, oidx) => {
+        const label = document.createElement('label');
+        label.className = 'block';
+        label.innerHTML = `<input type="radio" name="${q.qid}" value="${oidx}" class="mr-2"> ${opt}`;
+        qWrap.appendChild(label);
+      });
+    } else if (q.type === 'desc') {
+      const ta = document.createElement('textarea');
+      ta.name = q.qid;
+      ta.rows = 4;
+      ta.className = 'w-full border rounded p-2';
+      qWrap.appendChild(ta);
+    }
+
+    // Hidden correctIndex if present (used for browser auto-scoring)
+    if (typeof q.correctIndex !== 'undefined') {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = `${q.qid}__correct`;
+      hidden.value = String(q.correctIndex);
+      qWrap.appendChild(hidden);
+    }
+
+    testForm.appendChild(qWrap);
+  });
+
+  // Start timer
+  remainingSeconds = testObj.durationSeconds;
+  updateTimer();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    remainingSeconds--;
+    updateTimer();
+    if (remainingSeconds <= 0) {
+      clearInterval(timerInterval);
+      modalStatus.innerText = "Time is up — auto-submitting.";
+      submitTest(); // auto-submit
+    }
+  }, 1000);
+
+  testModal.classList.remove('hidden');
+}
+
+function updateTimer() {
+  const m = Math.floor(remainingSeconds / 60);
+  const s = remainingSeconds % 60;
+  timerEl.innerText = `⏱️ Time left: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// Close / abort modal
+function closeModal() {
+  testModal.classList.add('hidden');
+  modalStatus.innerText = '';
+  if (timerInterval) clearInterval(timerInterval);
+  currentTest = null;
+}
+
+// Save & Exit (we will not allow pause but allow to close and still have answers retained client-side)
+function saveAndClose(e) {
+  e.preventDefault();
+  // Let user close; answers are retained until page refresh
+  closeModal();
+  alert("Progress saved locally in this session. Note: pause/resume must be supported by contract for reliable results.");
+}
+
+// ======= Submission flow (MCQ auto-score + descriptive upload) =======
+submitTestBtn.onclick = submitTest;
+
+async function submitTest() {
+  if (!currentTest) return;
+  modalStatus.innerText = "Preparing submission...";
+  // Collect answers
+  const formElems = testForm.elements;
+  const mcqAnswers = [];   // numeric answers for MCQs in order
+  const descAnswers = {};  // map qid -> text for descriptive
+
+  currentTest.questions.forEach((q, idx) => {
+    if (q.type === 'mcq') {
+      const radios = formElems[q.qid];
+      let val = null;
+      if (!radios) { mcqAnswers.push(-1); return; }
+      if (radios.length === undefined) { // single input edge
+        val = radios.checked ? radios.value : null;
+      } else {
+        for (const r of radios) { if (r.checked) { val = r.value; break; } }
+      }
+      mcqAnswers.push(val !== null ? parseInt(val) : -1);
+    } else if (q.type === 'desc') {
+      const ta = formElems[q.qid];
+      descAnswers[q.qid] = ta ? ta.value.trim() : "";
+    }
+  });
+
+  // Auto-score MCQs in-browser (compare against correctIndex if available)
+  let mcqScore = null;
+  try {
+    let correctCount = 0;
+    let totalMcq = 0;
+    currentTest.questions.forEach((q, idx) => {
+      if (q.type === 'mcq') {
+        totalMcq++;
+        if (typeof q.correctIndex !== 'undefined') {
+          if (mcqAnswers[idx] === q.correctIndex) correctCount++;
+        }
+      }
+    });
+    if (totalMcq > 0) {
+      // If any MCQ had 'correctIndex' present we can compute score; else score = null (pending)
+      const hasAnswerKey = currentTest.questions.some(q => q.type==='mcq' && typeof q.correctIndex !== 'undefined');
+      if (hasAnswerKey) {
+        mcqScore = Math.round((correctCount / totalMcq) * 100); // percentage
+      }
+    }
+  } catch (e) {
+    console.warn("Auto-scoring issue:", e);
+  }
+
+  modalStatus.innerText = "Uploading descriptive answers to IPFS (if any)...";
+
+  // Upload descriptive answers to IPFS as a single JSON blob if any descriptive answers exist
+  let descCID = "";
+  try {
+    const descEntries = Object.entries(descAnswers).filter(([,v]) => v && v.length > 0);
+    if (descEntries.length > 0) {
+      const payload = {};
+      descEntries.forEach(([k,v]) => payload[k] = v);
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      const form = new FormData();
+      form.append("file", blob, `descriptive_${currentTest.testId}_${Date.now()}.json`);
+
+      const res = await fetch("https://api.lighthouse.storage/upload", {
+        method: "POST",
+        headers: { "Authorization": LIGHTHOUSE_API_KEY },
+        body: form
+      });
+      const data = await res.json();
+      if (data && data.Hash) {
+        descCID = data.Hash;
+        modalStatus.innerText = "Descriptive answers uploaded (CID: " + descCID + "). Preparing on-chain submission...";
+      } else {
+        console.warn("IPFS response no Hash:", data);
+        modalStatus.innerText = "IPFS upload didn't return CID (see console). We'll still attempt on-chain tx for MCQs.";
+      }
+    } else {
+      modalStatus.innerText = "No descriptive answers to upload. Preparing on-chain submission...";
+    }
+  } catch (err) {
+    console.error("Descriptive upload error:", err);
+    modalStatus.innerText = "IPFS upload failed (see console). We'll still attempt on-chain tx for MCQs.";
+  }
+
+  // 1) Submit MCQ answers on-chain via submitTestByStudent(testId, testIndex, answers)
+  //    Adjust arguments if your contract uses different param order/names.
+  let txReceipt = null;
+  if (!resumeRegistry) {
+    modalStatus.innerText = "Contract not instantiated — cannot send on-chain tx.";
+  } else {
+    try {
+      // convert mcqAnswers to uint array - replace negative values (-1) with e.g. 255 sentinel if needed by your contract
+      const answersForChain = mcqAnswers.map(a => (a === -1 ? 255 : a)); // 255 used as 'no answer' sentinel
+      modalStatus.innerText = "Sending answers (MCQ) on-chain...";
+      txReceipt = await resumeRegistry.methods.submitTestByStudent(
+        currentTest.testId,
+        currentTest.testId, // second index param — keep same or adapt
+        answersForChain
+      ).send({ from: account });
+      modalStatus.innerText = "MCQ answers sent on-chain (tx mined).";
+      console.log("submitTest txReceipt:", txReceipt);
+    } catch (err) {
+      console.error("submitTestByStudent error:", err);
+      modalStatus.innerText = "On-chain MCQ submission failed (see console).";
+    }
+  }
+
+  // 2) If descCID exists, try to call optional contract method submitDescriptiveAnswers(testId, cid)
+  if (descCID && resumeRegistry) {
+    try {
+      if (typeof resumeRegistry.methods.submitDescriptiveAnswers === "function") {
+        modalStatus.innerText = "Sending descriptive CID to contract for manual evaluation...";
+        await resumeRegistry.methods.submitDescriptiveAnswers(currentTest.testId, descCID).send({ from: account });
+        modalStatus.innerText = "Descriptive CID stored on-chain for manual evaluation.";
+      } else {
+        // method doesn't exist — warn but keep CID displayed
+        console.warn("Contract has no submitDescriptiveAnswers method.");
+        modalStatus.innerText += " (Contract has no submitDescriptiveAnswers method; CID available below.)";
+      }
+    } catch (err) {
+      console.error("submitDescriptiveAnswers error:", err);
+      modalStatus.innerText += " (Failed to send CID to contract — see console.)";
+    }
+  }
+
+  // 3) Store local result notification / push to UI
+  const resultMsgParts = [];
+  if (mcqScore !== null) resultMsgParts.push(`MCQ Score: ${mcqScore}%`);
+  else resultMsgParts.push(`MCQ: submitted (score pending)`);
+
+  if (descCID) resultMsgParts.push(`Descriptive CID: ${descCID}`);
+
+  addResultNotification(currentTest.testId, resultMsgParts.join(" | "));
+
+  // clear modal & timer
+  if (timerInterval) clearInterval(timerInterval);
+  testModal.classList.add('hidden');
+  modalStatus.innerText = "Submission complete.";
+  // Refresh on-page notifications (if any)
+  loadNotifications();
+}
+
+// Helper to render a result notification
+function addResultNotification(testId, message) {
+  const div = document.createElement('div');
+  div.className = 'p-3 rounded border';
+  div.innerHTML = `<strong>Test ${testId}:</strong> ${message} <span class="text-xs text-gray-600 ml-2">(${new Date().toLocaleString()})</span>`;
+  resultNotificationsEl.prepend(div);
+}
+
+// ======= Load initial state =======
+window.addEventListener('load', async () => {
+  // Show placeholder until wallet connected
+  notificationsEl.innerHTML = '<div class="text-sm text-gray-600">Connect wallet to load tests & notifications</div>';
+
+  // Attempt auto-connect if wallet already granted
+  if (window.ethereum && window.ethereum.selectedAddress) {
+    await connectWallet();
+  } else {
+    // still render notifications (mock) so UI shows test list
+    loadNotifications();
+  }
+});
+
+// ======= Utility: loadNotifications uses mockTests for now =======
+function loadNotifications() {
+  notificationsEl.innerHTML = '';
+  // In production, fetch tests for 'account' from contract and map them into same structure
+  for (const t of mockTests) {
+    const div = document.createElement('div');
+    div.className = 'p-3 rounded border flex justify-between items-center';
+    const left = document.createElement('div');
+    left.innerHTML = `<div class="font-semibold">${t.title}</div><div class="text-sm text-gray-600">${new Date(t.startTimeISO).toLocaleString()}</div>`;
+    const right = document.createElement('div');
+    const now = new Date();
+    const start = new Date(t.startTimeISO);
+    const btn = document.createElement('button');
+    btn.innerText = now >= start ? 'Take Test' : 'Locked';
+    btn.disabled = now < start;
+    btn.className = now >= start ? 'bg-blue-600 text-white px-3 py-2 rounded' : 'bg-gray-300 text-gray-600 px-3 py-2 rounded';
+    btn.onclick = () => openTestModal(t);
+    right.appendChild(btn);
+    div.appendChild(left);
+    div.appendChild(right);
+    notificationsEl.appendChild(div);
+  }
+}
+</script>
+
+</body>
+</html>

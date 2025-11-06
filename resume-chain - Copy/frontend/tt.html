@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Registration Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-r from-blue-50 via-blue-100 to-white min-h-screen font-sans">
+
+<main class="container mx-auto mt-10 px-4">
+  <!-- Student Registration & List -->
+  <section class="bg-white shadow-lg rounded-xl p-6">
+    <h2 class="text-2xl font-semibold text-blue-700 mb-4">Add Student Details</h2>
+    <form id="studentForm" class="space-y-4">
+      <input type="text" id="studentName" placeholder="Full Name" class="w-full p-3 border rounded-lg" required>
+      <input type="email" id="studentEmail" placeholder="Email ID" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentDegree" placeholder="Degree" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentRegNo" placeholder="Registration Number" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentContact" placeholder="Contact Number" class="w-full p-3 border rounded-lg" required>
+      <input type="text" id="studentAddress" placeholder="Address" class="w-full p-3 border rounded-lg" required>
+      <input type="number" id="yearJoining" placeholder="Year of Joining" class="w-full p-3 border rounded-lg" required>
+      <input type="number" id="yearCompletion" placeholder="Year of Completion" class="w-full p-3 border rounded-lg" required>
+      <input type="file" id="studentPhoto" accept="image/*" class="w-full p-3 border rounded-lg" required>
+      <button type="submit" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition">Add Student</button>
+    </form>
+    <p id="studentStatus" class="mt-4 text-green-600 font-medium"></p>
+
+    <!-- Student Filter -->
+    <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+      <h3 class="text-xl font-semibold text-blue-700 mb-3">Filter Students</h3>
+      <div class="flex flex-wrap gap-3">
+        <input type="number" id="filterYear" placeholder="Year of Joining" class="p-2 border rounded-lg">
+        <input type="text" id="filterRegNo" placeholder="Registration Number" class="p-2 border rounded-lg">
+        <input type="text" id="filterDegree" placeholder="Degree" class="p-2 border rounded-lg">
+        <button id="filterBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">Filter</button>
+        <button id="clearFilterBtn" class="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition">Clear Filter</button>
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <h3 class="text-xl font-semibold text-blue-700 mb-3">Students Added:</h3>
+      <div id="studentList" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-700"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+let allStudents = [];
+
+// Render Students (dummy preview data)
+function renderStudents(students) {
+  const studentList = document.getElementById("studentList");
+  studentList.innerHTML = "";
+  students.forEach(s => {
+    const div = document.createElement("div");
+    div.className = "bg-blue-50 p-4 rounded-lg flex items-center gap-4";
+
+    const img = document.createElement("img");
+    img.src = s.photo || "https://via.placeholder.com/80"; // placeholder if no image
+    img.className = "w-20 h-20 object-cover rounded-full border";
+
+    const info = document.createElement("div");
+    info.innerHTML = `<strong>${s.name}</strong><br>
+                      Email: ${s.email}<br>
+                      Degree: ${s.degree}<br>
+                      Reg No: ${s.regNo}<br>
+                      Contact: ${s.contact}<br>
+                      Address: ${s.address}<br>
+                      Joining: ${s.joining} | Completion: ${s.completion}`;
+
+    div.appendChild(img);
+    div.appendChild(info);
+    studentList.appendChild(div);
+  });
+}
+
+// Demo: Add dummy student for preview
+allStudents.push({
+  name: "John Doe",
+  email: "john@example.com",
+  degree: "B.Tech",
+  regNo: "12345",
+  contact: "9999999999",
+  address: "123 Main St",
+  joining: 2021,
+  completion: 2025,
+  photo: ""
+});
+renderStudents(allStudents);
+
+// Filter functionality (preview)
+document.getElementById("filterBtn").onclick = () => {
+  const year = document.getElementById("filterYear").value;
+  const regNo = document.getElementById("filterRegNo").value.toLowerCase();
+  const degree = document.getElementById("filterDegree").value.toLowerCase();
+
+  const filtered = allStudents.filter(s =>
+    (!year || s.joining == year) &&
+    (!regNo || s.regNo.toLowerCase().includes(regNo)) &&
+    (!degree || s.degree.toLowerCase().includes(degree))
+  );
+  renderStudents(filtered);
+};
+
+document.getElementById("clearFilterBtn").onclick = () => {
+  document.getElementById("filterYear").value = "";
+  document.getElementById("filterRegNo").value = "";
+  document.getElementById("filterDegree").value = "";
+  renderStudents(allStudents);
+};
+</script>
+
+</body>
+</html>

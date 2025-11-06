@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employer Portal - Skill Verification DApp</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://unpkg.com/intro.js/minified/introjs.min.css">
+<script src="https://unpkg.com/intro.js/minified/intro.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js/dist/web3.min.js"></script>
+<script src="https://unpkg.com/@lighthouse-web3/sdk/dist/lighthouse-sdk.min.js"></script>
+
+<style>
+  body {
+    background: linear-gradient(135deg, #6e45e2, #88d3ce);
+    min-height: 100vh;
+  }
+</style>
+</head>
+<body class="font-sans text-gray-900">
+
+<header class="bg-purple-700 bg-opacity-90 text-white py-6 shadow-md">
+  <div class="container mx-auto text-center">
+    <h1 class="text-3xl font-bold">🏢 Employer Portal</h1>
+    <p class="mt-2 text-lg">Register company, search students & assign tests</p>
+    <div class="mt-4 flex justify-center gap-2">
+      <button onclick="startTutorial()" class="bg-yellow-500 px-4 py-2 rounded-lg text-white hover:bg-yellow-600 transition">📝 Start Tutorial</button>
+      <a href="index.html" class="bg-gray-500 px-4 py-2 rounded-lg text-white hover:bg-gray-600 transition">⬅️ Back to Home</a>
+    </div>
+  </div>
+</header>
+
+<div id="walletStatus" class="text-center mt-6 text-white font-medium"></div>
+
+<main class="container mx-auto mt-8 px-4 max-w-5xl">
+
+  <!-- Register Employer -->
+  <section class="bg-white p-6 rounded-xl shadow mb-6">
+    <h2 class="text-xl font-bold mb-4">Register Employer</h2>
+    <form id="registerForm" class="space-y-4">
+      <input type="text" id="orgName" placeholder="Organization Name" class="w-full p-2 border rounded">
+      <input type="text" id="location" placeholder="Location" class="w-full p-2 border rounded">
+      <input type="text" id="managerName" placeholder="Manager Name" class="w-full p-2 border rounded">
+      <input type="text" id="contactInfo" placeholder="Contact Info" class="w-full p-2 border rounded">
+      <input type="text" id="email" placeholder="Email" class="w-full p-2 border rounded">
+      <input type="text" id="description" placeholder="Description" class="w-full p-2 border rounded">
+      <input type="file" id="profileFile" accept="image/*" class="w-full p-2 border rounded">
+
+      <button type="button" onclick="registerEmployer()" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">Register</button>
+    </form>
+  </section>
+
+  <!-- Search Students -->
+  <section class="bg-white p-6 rounded-xl shadow mb-6">
+    <h2 class="text-xl font-bold mb-4">Search Students by Skill</h2>
+    <input type="text" id="skillInput" placeholder="Enter Skill Name" class="w-full p-2 border rounded mb-2">
+    <div class="flex gap-2 mb-2">
+      <button onclick="searchStudents()" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">Search</button>
+      <button onclick="showDemo()" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition">🔹 Show Demo Students</button>
+    </div>
+    <div id="results" class="space-y-4 mt-4"></div>
+  </section>
+
+  <!-- Test Portal -->
+  <section id="testPortal" class="bg-white p-6 rounded-xl shadow mb-6 hidden">
+    <h2 class="text-xl font-bold mb-4">Assign Test / Evaluate Answers</h2>
+    <p id="selectedStudent" class="font-medium mb-2">Student: --</p>
+    <form id="assignTestForm" class="space-y-4">
+      <input type="text" id="testSkill" placeholder="Skill" class="border p-2 rounded w-full">
+      <input type="datetime-local" id="testSchedule" class="border p-2 rounded w-full">
+      <input type="number" id="testDuration" placeholder="Duration (minutes)" class="border p-2 rounded w-full">
+      <textarea id="testQuestions" placeholder="Questions (one per line)" class="border p-2 rounded w-full"></textarea>
+      <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">Assign Test</button>
+    </form>
+    <hr class="my-4">
+    <h3 class="text-lg font-bold mb-2">Evaluate Submitted Answers</h3>
+    <div id="submittedAnswersContainer"></div>
+  </section>
+
+</main>
+
+<footer class="bg-gray-100 text-gray-700 mt-16 py-6 shadow-inner text-center">
+  © 2025 Skill Verification DApp | Blockchain & Tailwind CSS
+</footer>
+
+<script>
+let web3, accounts, employeeRegistry;
+const employeeRegistryAddress = "0x75c68e69775fA3E9DD38eA32E554f6BF259C1135";
+const employeeRegistryABI = [ {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_resumeRegistry",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "employer",
+          "type": "address"
+        }
+      ],
+      "name": "EmployerRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "studentId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        }
+      ],
+      "name": "JobNotification",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "testIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256[]",
+          "name": "studentIds",
+          "type": "uint256[]"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "startTime",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "endTime",
+          "type": "uint256"
+        }
+      ],
+      "name": "TestAssigned",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "testIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "studentId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "score",
+          "type": "uint256"
+        }
+      ],
+      "name": "TestSubmitted",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "autoSubmitExpiredTest",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "_studentIds",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "string",
+          "name": "_jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_startTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_endTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_durationMinutes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string[]",
+          "name": "_questions",
+          "type": "string[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "_maxMarks",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_totalMarks",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "_isMCQ",
+          "type": "bool"
+        }
+      ],
+      "name": "createTest",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "employers",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "location",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "contactPerson",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "contactNumber",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "profileCID",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "isRegistered",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentAnswers",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStudentScore",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "getTest",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "studentIds",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "string",
+          "name": "jobTitle",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "endTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "durationMinutes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string[]",
+          "name": "questions",
+          "type": "string[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "maxMarks",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalMarks",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "isMCQ",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_threshold",
+          "type": "uint256"
+        }
+      ],
+      "name": "notifyJob",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_companyName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_location",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_contactPerson",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_contactNumber",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_email",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_profileCID",
+          "type": "string"
+        }
+      ],
+      "name": "registerEmployer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "resumeRegistry",
+      "outputs": [
+        {
+          "internalType": "contract IResumeRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_skill",
+          "type": "string"
+        }
+      ],
+      "name": "searchStudentsBySkill",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_score",
+          "type": "uint256"
+        }
+      ],
+      "name": "setManualScore",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_testIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_studentId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "_answers",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "submitTest",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalTests",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    } ];
+let selectedStudentId = null;
+//load function
+function showLoading(container, message="Loading...") {
+  container.innerHTML = `<p class="text-gray-200 italic">${message}</p>`;
+}
+
+//inliner
+function showError(container, message) {
+  container.innerHTML = `<p class="text-red-500 font-medium">❌ ${message}</p>`;
+}
+
+// 4 & 5. ResumeRegistry helper
+const resumeRegistryABI = [
+  {
+    "inputs":[{"internalType":"uint256","name":"_studentId","type":"uint256"}],
+    "name":"getResume",
+    "outputs":[
+      {"internalType":"string","name":"name","type":"string"},
+      {"internalType":"string","name":"university","type":"string"},
+      {"internalType":"string","name":"email","type":"string"},
+      {"internalType":"string","name":"skill","type":"string"},
+      {"internalType":"string","name":"resumeCID","type":"string"}
+    ],
+    "stateMutability":"view","type":"function"
+  }
+];
+
+async function getResumeRegistryContract() {
+  if(!employeeRegistry) return null;
+  const addr = await employeeRegistry.methods.resumeRegistry().call();
+  return new web3.eth.Contract(resumeRegistryABI, addr);
+}
+// Connect wallet
+window.addEventListener('load', async () => {
+  if (window.ethereum) {
+    web3 = new Web3(window.ethereum);
+    accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    document.getElementById('walletStatus').innerText = "✅ Connected: " + accounts[0];
+    employeeRegistry = new web3.eth.Contract(employeeRegistryABI, employeeRegistryAddress);
+  } else {
+    document.getElementById('walletStatus').innerHTML = `❌ MetaMask not detected. <a href="https://metamask.io/download/" target="_blank">Install MetaMask</a>`;
+  }
+});
+
+// Register Employer
+async function registerEmployer() {
+  const org = document.getElementById('orgName').value.trim();
+  const location = document.getElementById('location').value.trim();
+  const manager = document.getElementById('managerName').value.trim();
+  const contact = document.getElementById('contactInfo').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const fileInput = document.getElementById('profileFile');
+  const walletStatusDiv = document.getElementById('walletStatus');
+
+  // Simple validation
+  if(!org || !location || !manager || !contact || !email) {
+    alert("❌ Please fill in all required fields!");
+    return;
+  }
+
+  let profileCID = "";
+  if(fileInput.files.length > 0){
+    profileCID = await uploadToLighthouse(fileInput.files[0]);
+    if(!profileCID) return; // Stop if upload failed
+  }
+
+  try {
+    walletStatusDiv.innerText = "⏳ Registering employer on blockchain...";
+    
+    await employeeRegistry.methods.registerEmployer(
+      org, location, manager, contact, email, description, profileCID
+    ).send({ from: accounts[0] });
+
+    walletStatusDiv.innerText = "✅ Employer registered successfully!";
+    alert("✅ Employer registered successfully!");
+    document.getElementById('registerForm').reset(); // Clear form
+
+  } catch (err) {
+    console.error("Blockchain registration failed:", err);
+    walletStatusDiv.innerText = `❌ Registration failed: ${err.message || err}`;
+    alert("❌ Error registering employer. Check console.");
+  }
+}
+
+
+//light house perpetual ipfs
+async function uploadToLighthouse(file) {
+  const walletStatusDiv = document.getElementById('walletStatus');
+  const apiKey = "265b44d3.4545619d6942437aba07485069df6f63"; // Your Lighthouse API key
+
+  try {
+    walletStatusDiv.innerText = "⏳ Uploading profile image to IPFS via Lighthouse...";
+    
+    // Upload with progress callback
+    const output = await window.Lighthouse.upload(file, apiKey, (progress) => {
+      walletStatusDiv.innerText = `⏳ Uploading: ${progress.toFixed(2)}%`;
+    });
+
+    walletStatusDiv.innerText = "✅ Profile uploaded to IPFS!";
+    return output.data.Hash; // Returns CID
+
+  } catch (err) {
+    console.error("IPFS upload failed:", err);
+    walletStatusDiv.innerText = `❌ Upload failed: ${err.message || err}`;
+    return null;
+  }
+}
+//uploadTestFile
+async function uploadTestFile(file){
+    const walletStatusDiv = document.getElementById('walletStatus');
+    try {
+      walletStatusDiv.innerText = `⏳ Uploading test file "${file.name}" to IPFS...`;
+      
+      const apiKey = "265b44d3.4545619d6942437aba07485069df6f63";
+      const output = await window.Lighthouse.upload(file, apiKey, (progress) => {
+        walletStatusDiv.innerText = `⏳ Uploading: ${progress.toFixed(2)}%`;
+      });
+
+      walletStatusDiv.innerText = "✅ Test file uploaded!";
+      return output.data.Hash;
+
+    } catch(err) {
+      console.error("IPFS upload failed:", err);
+      walletStatusDiv.innerText = `❌ Upload failed: ${err.message || err}`;
+      return null;
+    }
+}
+
+
+// Search Students on blockchain
+async function searchStudents() {
+  const skill = document.getElementById('skillInput').value.trim();
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = "";
+
+  if(!employeeRegistry) {
+    resultsDiv.innerHTML = "<p>❌ Blockchain not connected.</p>";
+    return;
+  }
+
+  try {
+    // Fetch student IDs
+    const studentIds = await employeeRegistry.methods.searchStudentsBySkill(skill).call();
+    if(studentIds.length === 0){
+      resultsDiv.innerHTML = "<p>No students found for this skill.</p>";
+      return;
+    }
+
+    // Fetch ResumeRegistry address
+    const resumeRegistryAddress = await employeeRegistry.methods.resumeRegistry().call();
+    const resumeRegistryABI = [
+      {
+        "inputs":[{"internalType":"uint256","name":"_studentId","type":"uint256"}],
+        "name":"getResume",
+        "outputs":[
+          {"internalType":"string","name":"name","type":"string"},
+          {"internalType":"string","name":"university","type":"string"},
+          {"internalType":"string","name":"email","type":"string"},
+          {"internalType":"string","name":"skill","type":"string"},
+          {"internalType":"string","name":"resumeCID","type":"string"}
+        ],
+        "stateMutability":"view","type":"function"
+      }
+    ];
+    const resumeRegistry = new web3.eth.Contract(resumeRegistryABI, resumeRegistryAddress);
+
+    for(const id of studentIds){
+      const res = await resumeRegistry.methods.getResume(id).call();
+      const student = {
+        id,
+        name: res.name,
+        university: res.university,
+        email: res.email,
+        skill: res.skill,
+        resumeCID: res.resumeCID
+      };
+      addStudentCard(student);
+    }
+  } catch (err) {
+    console.error("Blockchain student search failed:", err);
+    resultsDiv.innerHTML = "<p>❌ Error fetching students. Check console.</p>";
+  }
+}
+
+// Add student card
+function addStudentCard(student) {
+  const resultsDiv = document.getElementById('results');
+  const card = document.createElement('div');
+  card.className = "p-4 border rounded-lg shadow mb-4 bg-gray-50";
+  card.innerHTML = `
+    <p><b>Name:</b> ${student.name}</p>
+    <p><b>University:</b> ${student.university}</p>
+    <p><b>Email:</b> ${student.email}</p>
+    <p><b>Skill:</b> ${student.skill}</p>
+    <p><b>Resume CID:</b> ${student.resumeCID}</p>
+    <div class="flex gap-2 mt-2">
+      <button onclick="openTestPortal(${student.id}, '${student.name}')"
+        class="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 transition">
+        Assign / Evaluate Test
+      </button>
+      <button onclick="viewResume(${student.id}, '${student.resumeCID}')"
+        class="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600 transition">
+        📄 View Resume
+      </button>
+    </div>
+    <div id="resume-${student.id}" class="mt-2 hidden border p-2 rounded bg-gray-50"></div>
+  `;
+  resultsDiv.appendChild(card);
+}
+
+// Open Test Portal
+function openTestPortal(studentId, studentName) {
+  selectedStudentId = studentId;
+  document.getElementById('selectedStudent').innerText = `Student: ${studentName}`;
+  document.getElementById('testPortal').classList.remove('hidden');
+  loadSubmissions(studentId);
+}
+
+// View Resume on IPFS
+function viewResume(studentId, cid){
+  const container = document.getElementById(`resume-${studentId}`);
+  if(!cid){
+    container.innerHTML = "<p class='text-red-500'>❌ No resume uploaded.</p>";
+    container.classList.remove('hidden');
+    return;
+  }
+
+  // Use Lighthouse public gateway link
+  const ipfsLink = `https://gateway.lighthouse.storage/ipfs/${cid}`;
+
+  container.innerHTML = `
+    <iframe src="${ipfsLink}" 
+      class="w-full h-96 rounded border" 
+      title="Student Resume"></iframe>
+    <p class="mt-2 text-sm text-gray-600">🔗 <a href="${ipfsLink}" target="_blank" class="underline">Open in new tab</a></p>
+  `;
+  container.classList.remove('hidden');
+}
+
+
+// Assign Test
+document.getElementById('assignTestForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if(!selectedStudentId){
+    alert("Select a student first!");
+    return;
+  }
+
+  const skill = document.getElementById('testSkill').value.trim();
+  const schedule = Math.floor(new Date(document.getElementById('testSchedule').value).getTime() / 1000);
+  const duration = parseInt(document.getElementById('testDuration').value) * 60;
+  const questions = document.getElementById('testQuestions').value.split("\n").filter(q=>q);
+  if(questions.length === 0){
+    alert("Enter at least one question.");
+    return;
+  }
+
+  const maxMarks = new Array(questions.length).fill(10);
+  const totalMarks = maxMarks.reduce((a,b)=>a+b,0);
+  const isMCQ = true;
+
+  try {
+    await employeeRegistry.methods.createTest(
+      [selectedStudentId],
+      skill,
+      "Auto-created test",
+      schedule,
+      schedule+duration,
+      duration,
+      questions,
+      maxMarks,
+      totalMarks,
+      isMCQ
+    ).send({from: accounts[0]});
+    alert(`✅ Test assigned to student ID: ${selectedStudentId}`);
+  } catch(err){
+    console.error(err);
+    alert("❌ Error assigning test. Check console.");
+  }
+};
+
+// Load Submissions (demo-ready, replace with blockchain when available)
+// Load Submissions (demo-ready, replace with blockchain when available)
+async function loadSubmissions(studentId) {
+  const container = document.getElementById('submittedAnswersContainer');
+  container.innerHTML = "<p>Loading submissions...</p>";
+
+  try {
+    // Fetch total tests from blockchain
+    const totalTests = await employeeRegistry.methods.totalTests().call();
+    container.innerHTML = "";
+
+    let hasSubmissions = false;
+
+    for (let i = 0; i < totalTests; i++) {
+      // Fetch test info (studentIds, scores, evaluated status)
+      const test = await employeeRegistry.methods.getTest(i).call();
+      if (test.studentIds.includes(studentId)) {
+        hasSubmissions = true;
+        const score = await employeeRegistry.methods.getStudentScore(i, studentId).call();
+        const evaluated = score > 0;
+
+        container.innerHTML += `<div class="p-2 border rounded mb-2">
+          <p><b>Test ID:</b> ${i}</p>
+          <p><b>Total Score:</b> ${score}</p>
+          <p><b>Status:</b> ${evaluated ? "Evaluated" : "Pending"}</p>
+          ${evaluated ? `
+            <div class="mt-2 flex gap-2">
+              <button onclick="notifyJob(${i}, ${score})" 
+                class="bg-green-500 px-3 py-1 rounded text-white hover:bg-green-600 transition">
+                📣 Notify Job
+              </button>
+            </div>` : `
+            <div class="mt-2 flex gap-2">
+              <input type="number" id="manualScore-${i}" placeholder="Enter Score" class="border p-1 rounded w-24">
+              <button onclick="submitManualScore(${i}, ${studentId})" 
+                class="bg-yellow-500 px-3 py-1 rounded text-white hover:bg-yellow-600 transition">
+                Submit Score
+              </button>
+            </div>`}
+        </div>`;
+      }
+    }
+
+    if (!hasSubmissions) {
+      container.innerHTML = "<p>No submissions yet.</p>";
+    }
+
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = "<p>❌ Error loading submissions. Check console.</p>";
+  }
+}
+
+//notify student
+async function notifyJob(testIndex, score) {
+  const threshold = 50; // Set your passing threshold here
+  if(score < threshold){
+    alert(`❌ Student score is below threshold (${threshold}). Cannot notify.`);
+    return;
+  }
+
+  try {
+    await employeeRegistry.methods.notifyJob(testIndex, threshold).send({ from: accounts[0] });
+    alert("✅ Job notification sent to eligible students!");
+  } catch(err){
+    console.error(err);
+    alert("❌ Error sending job notification. Check console.");
+  }
+}
+//showdemo
+function showDemo() {
+  const resultsDiv = document.getElementById('results');
+  resultsDiv.innerHTML = "";
+  const demoStudents = [
+    { id: 101, name: "Alice Johnson", university: "MIT", email: "alice@mit.edu", skill: "Blockchain", resumeCID: "QmDemoCID1" },
+    { id: 102, name: "Bob Smith", university: "Stanford", email: "bob@stanford.edu", skill: "AI", resumeCID: "QmDemoCID2" },
+    { id: 103, name: "Charlie Lee", university: "Harvard", email: "charlie@harvard.edu", skill: "Web3", resumeCID: "QmDemoCID3" }
+  ];
+
+  demoStudents.forEach(student => addStudentCard(student));
+}
+
+//manual scoresubmission
+async function submitManualScore(testIndex, studentId){
+  const scoreInput = document.getElementById(`manualScore-${testIndex}`);
+  const score = parseInt(scoreInput.value);
+  if(isNaN(score)) return alert("Enter a valid score.");
+  try {
+    await employeeRegistry.methods.setManualScore(testIndex, studentId, score).send({from: accounts[0]});
+    alert("✅ Score submitted!");
+    loadSubmissions(studentId); // reload
+  } catch(err){
+    console.error(err);
+    alert("❌ Error submitting score.");
+  }
+}
+
+
+// Intro.js Tutorial
+function startTutorial() {
+  introJs().setOptions({
+    steps: [
+      { intro: "Welcome to Employer Portal!" },
+      { element: document.getElementById('registerForm'), intro: "Register your company." },
+      { element: document.getElementById('skillInput'), intro: "Search students by skill." },
+      { element: document.getElementById('results'), intro: "Assign tests or evaluate answers here." }
+    ],
+    showProgress:true
+  }).start();
+}
+</script>
+
+</body>
+</html>
