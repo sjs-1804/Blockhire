@@ -6,7 +6,22 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx hardhat test",
+    "test:unit": "npx hardhat test test/unit/",
+    "test:integration": "npx hardhat test test/integration/",
+    "test:e2e": "npx hardhat test test/e2e/",
+    "test:security": "npx hardhat test test/security/",
+    "test:performance": "npx hardhat test test/performance/",
+    "test:coverage": "npx hardhat coverage",
+    "test:gas": "REPORT_GAS=true npx hardhat test",
+    "lint": "solhint 'contracts/**/*.sol'",
+    "lint:fix": "solhint 'contracts/**/*.sol' --fix",
+    "format": "prettier --write 'contracts/**/*.sol' 'test/**/*.js' 'scripts/**/*.js'",
+    "security": "slither contracts/",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "npx hardhat run scripts/deploy-multi-network.js --network sepolia",
+    "verify:contracts": "npx hardhat run scripts/verify-contracts.js",
+    "monitor": "node scripts/monitoring/health-check.js"
   },
   "keywords": [],
   "author": "",
